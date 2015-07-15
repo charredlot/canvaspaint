@@ -1,0 +1,212 @@
+<html>
+<head>
+<script src="https://ajax.googleapis.com/ajax/libs/jquery/2.1.3/jquery.min.js"></script>
+<!-- <script src="jquery-2.1.4.min.js"></script> -->
+<style>
+    canvas {
+        border: 1px solid #000000;
+    }
+    #top_canvas {
+        position: absolute;
+        left: 0;
+        right: 0;
+        z-index: 100;
+    }
+    #bg_canvas {        
+        position: absolute;
+        left: 0;
+        right: 0;
+        z-index: -1;
+    }
+</style>
+</head>
+
+<body onload="init_canvas()">
+<p>boop</p>
+<div id="panel">
+<input type="button" value="clear" id="clear" onclick="clear_button()">
+<input type="button" value="undo" id="undo" onclick="undo_button()">
+</div>
+<div id="layer_stack">
+<canvas id="top_canvas" width=500 height=400>boop</canvas>
+<canvas id="bg_canvas" width=500 height=400>boop</canvas>
+</div>
+<script type="text/javascript">
+var BRUSH_SIZE = 8;
+var CANVAS_WIDTH=500;
+var CANVAS_HEIGHT=400;
+var STACK_SIZE = 10;
+
+var top_canvas = null;
+var bg_ctx = null;
+var curr_ctx = null;
+var isMouseDown = false;
+var prevX = null;
+var prevY = null;
+var layer_stack = null;
+
+function init_canvas() {
+    isMouseDown = false;
+    layer_stack = {}
+    layer_stack.ctx = new Array();
+    layer_stack.jq = new Array();
+    
+    for (i = 0; i < STACK_SIZE; i++) {
+        var layer_id = "layer" + i;
+        $("#layer_stack").append(
+            "<canvas id=\"" + layer_id + "\" width=" + CANVAS_WIDTH + " height=" + CANVAS_HEIGHT +
+            "\" style=\"position: absolute; left: 0; right: 0; z-index: " + i +
+            ";\">unused</canvas>");
+        var jq = $("#" + layer_id);
+        var canvas = jq[0];
+        var context = canvas.getContext("2d");
+        drawCircle(context, i*100 + 100, 300, 25);
+
+        layer_stack.ctx.push(context);
+        layer_stack.jq.push(jq);
+    }
+    curr_ctx = layer_stack.ctx[0];
+    layer_stack.index = 0;
+    layer_stack.undo_index = 0;
+    
+    top_canvas = $("#top_canvas")[0];
+    top_canvas.addEventListener('mouseout', mouseOut, false);
+    top_canvas.addEventListener('mousemove', mouseMoved, false);
+    top_canvas.addEventListener('mousedown', mouseDown, false);
+    top_canvas.addEventListener('mouseup', mouseUp, false);       
+
+    bg_ctx = $("#bg_canvas")[0].getContext("2d");
+    drawCircle(bg_ctx, 25, 25, 25);
+}
+
+function drawInitial(ctx) {
+    ctx.beginPath();
+    ctx.moveTo(100, 50);
+    ctx.lineTo(450, 150);
+    ctx.strokeStyle = '#ff0000';
+    ctx.stroke();
+}
+
+function drawLine(ctx, x1, y1, x2, y2, thickness) {
+    ctx.beginPath();
+    ctx.moveTo(x1, y1);
+    ctx.lineTo(x2, y2);    
+    ctx.lineJoin = 'round';
+    ctx.lineCap = 'round';
+    ctx.lineWidth = BRUSH_SIZE;
+    ctx.strokeStyle = 'blue';
+    ctx.stroke();   
+}
+
+function drawCircle(ctx, x, y, radius) {
+    ctx.beginPath();
+    ctx.arc(x, y, radius, 0, 2 * Math.PI);
+    ctx.fillStyle = 'green';
+    ctx.strokeStyle = 'green';
+    
+    
+    ctx.fill();
+    ctx.stroke();    
+}
+
+function getMousePos(evt) {
+    var rect = top_canvas.getBoundingClientRect();
+    return {
+        x : evt.clientX - rect.left,
+        y : evt.clientY - rect.top
+    };       
+}
+
+function isPosInBounds(x, y) {
+    return (x >= 0) &&
+           (y >= 0) &&
+           (x < CANVAS_WIDTH) &&
+           (y < CANVAS_HEIGHT);
+}
+
+function rotateLayer() {    
+    var prev_z = parseInt(layer_stack.jq[layer_stack.index].css("z-index"), 10);
+    console.log(prev_z);
+    layer_stack.undo_index = layer_stack.index;    
+    
+    layer_stack.index += 1;
+    if (layer_stack.index >= STACK_SIZE) {
+        layer_stack.index = 0;
+    }       
+    
+    
+    if (layer_stack.index == STACK_SIZE - 1) {
+        /* reset the z indices so they don't increase without bound */
+        for (var i = 0; i < STACK_SIZE; i++) {
+            layer_stack.jq[i].css("z-index", i);
+        }
+    } else {
+        layer_stack.jq[layer_stack.index].css("z-index", (prev_z + 1));
+    }
+    curr_ctx = layer_stack.ctx[layer_stack.index];
+    
+    bg_ctx.drawImage(curr_ctx.canvas, 0, 0); /* commit oldest to background */
+    curr_ctx.clearRect(0, 0, top_canvas.width, top_canvas.height);
+}
+
+function finishLine(ctx, evt) {
+    var mousePos = getMousePos(top_canvas, evt);
+    drawLine(ctx, mousePos.x, mousePos.y, prevX, prevY);
+    isMouseDown = false;
+    rotateLayer();
+}
+
+function setDrawPrevPos(x, y) {
+    prevX = x;
+    prevY = y;
+}
+
+function mouseMoved(evt) {    
+    if (isMouseDown) {
+        var mousePos = getMousePos(evt);
+        drawLine(curr_ctx, mousePos.x, mousePos.y, prevX, prevY);
+        setDrawPrevPos(mousePos.x, mousePos.y);
+    }
+}
+
+function mouseOut(evt) {
+    if (isMouseDown) {
+        finishLine(curr_ctx, evt);
+    }
+}
+
+function mouseUp(evt) {
+    if (isMouseDown) {    
+        finishLine(curr_ctx, evt);
+    }
+}
+
+function mouseDown(evt) {
+    var mousePos = getMousePos(evt);
+    //console.log(mousePos.x + ' ' + mousePos.y);   
+    //console.log("drawing layer " + layer_stack.index);
+    setDrawPrevPos(mousePos.x, mousePos.y);
+    isMouseDown = true;
+}
+
+function clear_button() {
+    for (var i = 0; i < STACK_SIZE; i++) {    
+        layer_stack.ctx[i].clearRect(0, 0, top_canvas.width, top_canvas.height);
+    }
+    bg_ctx.clearRect(0, 0, top_canvas.width, top_canvas.height);
+}
+
+function undo_button() {
+    //console.log("undo layer " + layer_stack.undo_index);
+    if (layer_stack.undo_index == layer_stack.index) {
+    }
+    layer_stack.ctx[layer_stack.undo_index].clearRect(0, 0, top_canvas.width, top_canvas.height);    
+    layer_stack.undo_index -= 1;
+    if (layer_stack.undo_index < 0) {
+        layer_stack.undo_index = STACK_SIZE - 1;
+    }
+}
+
+</script>
+</body>
+</html>
