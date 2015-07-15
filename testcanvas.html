@@ -6,16 +6,19 @@
     canvas {
         border: 1px solid #000000;
     }
+    #layer_stack {
+        position: relative;
+    }
     #top_canvas {
         position: absolute;
         left: 0;
-        right: 0;
-        z-index: 100;
+        top: 0;
+        z-index: 100;        
     }
-    #bg_canvas {        
-        position: absolute;
+    #bg_canvas {
+        position: absolute;    
         left: 0;
-        right: 0;
+        top: 0;
         z-index: -1;
     }
 </style>
@@ -27,14 +30,28 @@
 <input type="button" value="clear" id="clear" onclick="clear_button()">
 <input type="button" value="undo" id="undo" onclick="undo_button()">
 </div>
+
 <div id="layer_stack">
-<canvas id="top_canvas" width=500 height=400>boop</canvas>
-<canvas id="bg_canvas" width=500 height=400>boop</canvas>
+    <canvas id="top_canvas">boop</canvas>
+    <canvas id="bg_canvas">boop</canvas>        
 </div>
+<div>
+    <p>boop2</p>
+    <p>boop2</p>
+    <p>boop2</p>
+    <p>boop2</p>
+    <p>boop2</p>
+    <p>boop2</p>
+    <p>boop2</p>
+    <p>boop2</p>
+    <p>boop2</p>
+    <p>boop2</p>
+    <p>boop2</p>
+    <p>boop2</p>
+</div>
+
 <script type="text/javascript">
 var BRUSH_SIZE = 8;
-var CANVAS_WIDTH=500;
-var CANVAS_HEIGHT=400;
 var STACK_SIZE = 10;
 
 var top_canvas = null;
@@ -46,17 +63,25 @@ var prevY = null;
 var layer_stack = null;
 
 function init_canvas() {
+    var CANVAS_WIDTH = 600;
+    var CANVAS_HEIGHT = 400;
+
     isMouseDown = false;
     layer_stack = {}
     layer_stack.ctx = new Array();
     layer_stack.jq = new Array();
     
+    /* canvas and css height width don't play too nicely */
+    $("#top_canvas").prop({width: CANVAS_WIDTH, height: CANVAS_HEIGHT});
+    $("#bg_canvas").prop({width: CANVAS_WIDTH, height: CANVAS_HEIGHT});
     for (i = 0; i < STACK_SIZE; i++) {
         var layer_id = "layer" + i;
         $("#layer_stack").append(
-            "<canvas id=\"" + layer_id + "\" width=" + CANVAS_WIDTH + " height=" + CANVAS_HEIGHT +
-            "\" style=\"position: absolute; left: 0; right: 0; z-index: " + i +
-            ";\">unused</canvas>");
+            "<canvas id=\"" + layer_id + "\"" +
+            " height=" + CANVAS_HEIGHT +
+            " width=" + CANVAS_WIDTH +
+            " style=\"position: absolute; left: 0; top: 0; z-index: " + i + ";\"" +
+            ">unused</canvas>");
         var jq = $("#" + layer_id);
         var canvas = jq[0];
         var context = canvas.getContext("2d");
@@ -68,12 +93,17 @@ function init_canvas() {
     curr_ctx = layer_stack.ctx[0];
     layer_stack.index = 0;
     layer_stack.undo_index = 0;
+    /* TODO: not sure what's best to put here */
+    $("#layer_stack").height($("#top_canvas").prop("height"));
     
     top_canvas = $("#top_canvas")[0];
     top_canvas.addEventListener('mouseout', mouseOut, false);
     top_canvas.addEventListener('mousemove', mouseMoved, false);
     top_canvas.addEventListener('mousedown', mouseDown, false);
-    top_canvas.addEventListener('mouseup', mouseUp, false);       
+    top_canvas.addEventListener('mouseup', mouseUp, false);
+    top_canvas.addEventListener('touchstart', touchStart, false);
+    top_canvas.addEventListener('touchmove', touchMoved, false);
+    top_canvas.addEventListener('touchend', touchEnd, false);
 
     bg_ctx = $("#bg_canvas")[0].getContext("2d");
     drawCircle(bg_ctx, 25, 25, 25);
@@ -112,9 +142,13 @@ function drawCircle(ctx, x, y, radius) {
 function getMousePos(evt) {
     var rect = top_canvas.getBoundingClientRect();
     return {
-        x : evt.clientX - rect.left,
-        y : evt.clientY - rect.top
-    };       
+        x : evt.clientX - rect.left,        
+        y : evt.clientY - rect.top        
+    };
+}
+
+function getTouchPos(evt) {
+    return getMousePos(evt);
 }
 
 function isPosInBounds(x, y) {
@@ -126,14 +160,13 @@ function isPosInBounds(x, y) {
 
 function rotateLayer() {    
     var prev_z = parseInt(layer_stack.jq[layer_stack.index].css("z-index"), 10);
-    console.log(prev_z);
+    //console.log(prev_z);
     layer_stack.undo_index = layer_stack.index;    
     
     layer_stack.index += 1;
     if (layer_stack.index >= STACK_SIZE) {
         layer_stack.index = 0;
-    }       
-    
+    }
     
     if (layer_stack.index == STACK_SIZE - 1) {
         /* reset the z indices so they don't increase without bound */
@@ -187,6 +220,18 @@ function mouseDown(evt) {
     //console.log("drawing layer " + layer_stack.index);
     setDrawPrevPos(mousePos.x, mousePos.y);
     isMouseDown = true;
+}
+
+function touchStart(evt) {
+    mouseDown(evt);
+}
+
+function touchMoved(evt) {
+    mouseMoved(evt);
+}
+
+function touchEnd(evt) {
+    mouseDown(evt);
 }
 
 function clear_button() {
